@@ -1,4 +1,4 @@
-name: Build Ghost Detection App (Auto package.json + Signed APK + iOS IPA)
+name: Build Ghost Detection App (Auto Cordova + Signed APK + iOS IPA)
 
 on:
   push:
@@ -22,54 +22,37 @@ jobs:
       - name: Install Cordova
         run: npm install -g cordova
 
-      - name: Generate package.json
+      - name: Create Cordova Project
         run: |
-          cat <<EOF > package.json
-          {
-            "name": "ghost-detection",
-            "version": "1.0.0",
-            "description": "幽霊検知ハイブリッドアプリ",
-            "main": "main/index.html",
-            "scripts": {
-              "start": "cordova serve",
-              "build-android": "cordova build android --release -- --project=main",
-              "build-ios": "cordova build ios --debug --device -- --project=main"
-            },
-            "author": "Your Name",
-            "license": "ISC",
-            "dependencies": {},
-            "devDependencies": {},
-            "cordova": {
-              "plugins": [
-                "cordova-plugin-device",
-                "cordova-plugin-camera",
-                "cordova-plugin-media",
-                "cordova-plugin-file",
-                "cordova-plugin-whitelist",
-                "cordova-plugin-geolocation",
-                "cordova-plugin-network-information"
-              ],
-              "platforms": [
-                "android",
-                "ios"
-              ]
-            }
-          }
-          EOF
-
-      - name: Install Project Dependencies
-        run: npm install
+          rm -rf temp
+          cordova create temp PDGAppCreate.pcdaimaougroup.Ghost.Detection "Ghost Detection"
+          cp -r main/* temp/www/
+          cd temp
 
       - name: Add Android Platform
         run: |
-          cordova platform remove android || true
+          cd temp
           cordova platform add android
 
+      - name: Install Cordova Plugins
+        run: |
+          cd temp
+          cordova plugin add cordova-plugin-device
+          cordova plugin add cordova-plugin-camera
+          cordova plugin add cordova-plugin-media
+          cordova plugin add cordova-plugin-file
+          cordova plugin add cordova-plugin-whitelist
+          cordova plugin add cordova-plugin-geolocation
+          cordova plugin add cordova-plugin-network-information
+
       - name: Build Android Release APK
-        run: cordova build android --release -- --project=main
+        run: |
+          cd temp
+          cordova build android --release
 
       - name: Generate Debug Keystore
         run: |
+          cd temp
           keytool -genkeypair -v -keystore debug.keystore -alias ghostdebug \
             -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass android -keypass android \
@@ -77,6 +60,7 @@ jobs:
 
       - name: Sign APK
         run: |
+          cd temp
           jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
             -keystore debug.keystore \
             -storepass android -keypass android \
@@ -84,6 +68,7 @@ jobs:
 
       - name: Align APK
         run: |
+          cd temp
           mkdir -p build
           $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 \
             platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk \
@@ -93,7 +78,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: GhostDetection-release-signed.apk
-          path: build/GhostDetection-signed.apk
+          path: temp/build/GhostDetection-signed.apk
 
   build-ios:
     name: Build iOS Debug IPA
@@ -111,54 +96,37 @@ jobs:
       - name: Install Cordova
         run: npm install -g cordova
 
-      - name: Generate package.json
+      - name: Create Cordova Project
         run: |
-          cat <<EOF > package.json
-          {
-            "name": "ghost-detection",
-            "version": "1.0.0",
-            "description": "幽霊検知ハイブリッドアプリ",
-            "main": "main/index.html",
-            "scripts": {
-              "start": "cordova serve",
-              "build-android": "cordova build android --release -- --project=main",
-              "build-ios": "cordova build ios --debug --device -- --project=main"
-            },
-            "author": "Your Name",
-            "license": "ISC",
-            "dependencies": {},
-            "devDependencies": {},
-            "cordova": {
-              "plugins": [
-                "cordova-plugin-device",
-                "cordova-plugin-camera",
-                "cordova-plugin-media",
-                "cordova-plugin-file",
-                "cordova-plugin-whitelist",
-                "cordova-plugin-geolocation",
-                "cordova-plugin-network-information"
-              ],
-              "platforms": [
-                "android",
-                "ios"
-              ]
-            }
-          }
-          EOF
-
-      - name: Install Project Dependencies
-        run: npm install
+          rm -rf temp
+          cordova create temp PDGAppCreate.pcdaimaougroup.Ghost.Detection "Ghost Detection"
+          cp -r main/* temp/www/
+          cd temp
 
       - name: Add iOS Platform
         run: |
-          cordova platform remove ios || true
+          cd temp
           cordova platform add ios
 
+      - name: Install Cordova Plugins
+        run: |
+          cd temp
+          cordova plugin add cordova-plugin-device
+          cordova plugin add cordova-plugin-camera
+          cordova plugin add cordova-plugin-media
+          cordova plugin add cordova-plugin-file
+          cordova plugin add cordova-plugin-whitelist
+          cordova plugin add cordova-plugin-geolocation
+          cordova plugin add cordova-plugin-network-information
+
       - name: Build iOS Debug for Device
-        run: cordova build ios --debug --device -- --project=main
+        run: |
+          cd temp
+          cordova build ios --debug --device
 
       - name: Archive .app with xcodebuild
         run: |
+          cd temp
           mkdir -p build/ios
           xcodebuild -workspace platforms/ios/GhostDetection.xcworkspace \
             -scheme "Ghost Detection" \
@@ -168,6 +136,7 @@ jobs:
 
       - name: Create exportOptions.plist
         run: |
+          cd temp
           cat <<EOF > build/ios/exportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -187,6 +156,7 @@ jobs:
 
       - name: Export IPA
         run: |
+          cd temp
           xcodebuild -exportArchive \
             -archivePath $PWD/build/GhostDetection.xcarchive \
             -exportOptionsPlist $PWD/build/ios/exportOptions.plist \
@@ -196,4 +166,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: GhostDetection-iOS-Debug-IPA
-          path: build/ios/GhostDetection.ipa
+          path: temp/build/ios/GhostDetection.ipa
