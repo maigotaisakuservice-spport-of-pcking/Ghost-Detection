@@ -1,18 +1,5 @@
 // ======================
-// 幽霊検知システム 完全版 app.js
-// 全機能統合
-// - カメラ/マイク取得
-// - オーディオ解析（p5.FFT）
-// - TensorFlow coco-ssd 物体検知
-// - 残像・光量急変解析
-// - 幽霊シルエット追跡
-// - 影動き履歴解析
-// - 軌跡可視化＋動画録画
-// - 定点マーカー ON/OFF
-// - 加速度/ジャイロ監視 ON/OFF
-// - モード選択（通常/赤外線/暗視/高感度幽霊）
-// - 緊急録画
-// - 自動復旧（ハートビート監視）
+// 幽霊検知システム Cordova 完全版 app.js
 // ======================
 
 // HTML要素取得
@@ -42,25 +29,13 @@ videoCanvas.addEventListener('click', e => {
 // ======================
 let motionEnabled = false;
 document.getElementById('motionToggle').onchange = e => motionEnabled = e.target.checked;
-if(window.DeviceMotionEvent){
-  window.addEventListener('devicemotion', event => {
-    if(!motionEnabled) return;
-    const acc = event.accelerationIncludingGravity;
-    const gyro = event.rotationRate;
-    if(Math.abs(acc.x) > 15 || Math.abs(acc.y) > 15 || Math.abs(acc.z) > 15){
-      triggerMotionAlert();
-    }
-    if(Math.abs(gyro.alpha) > 200 || Math.abs(gyro.beta) > 200 || Math.abs(gyro.gamma) > 200){
-      triggerMotionAlert();
-    }
-  });
-}
 
 // ======================
 // カメラ＆マイク初期化
 // ======================
 let audioCtx, micStream, fft;
 let videoStream, mediaRecorder, recordedChunks = [];
+
 async function initMedia(){
   try{
     const stream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
@@ -307,12 +282,27 @@ function detectUnknown(){
 }
 
 // ======================
-// 初期化
+// Cordova初期化
 // ======================
-async function init(){
+document.addEventListener('deviceready', async () => {
+  // メディア初期化
   await initMedia();
+
+  // 加速度/ジャイロ監視
+  if(motionEnabled && navigator.accelerometer){
+    const options = { frequency: 100 };
+    navigator.accelerometer.watchAcceleration(
+      function(acc){
+        if(Math.abs(acc.x)>15 || Math.abs(acc.y)>15 || Math.abs(acc.z)>15){
+          triggerMotionAlert();
+        }
+      },
+      function(err){ console.warn('Accelerometer error', err); },
+      options
+    );
+  }
+
+  // モデルロードと描画開始
   await loadModel();
   draw();
-}
-
-init();
+});
