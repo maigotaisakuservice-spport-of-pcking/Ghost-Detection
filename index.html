@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>幽霊検知システム</title>
+<style>
+  body {
+    margin: 0;
+    background-color: black;
+    color: #0F0;
+    font-family: monospace;
+    overflow: hidden;
+  }
+  #container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+  video, canvas {
+    position: absolute;
+    top:0;
+    left:0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  #overlay {
+    position:absolute;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background-color: rgba(255,0,0,0.3);
+    display:none;
+    animation: blink 0.5s infinite alternate;
+  }
+  @keyframes blink{
+    from{opacity:0.3;}
+    to{opacity:0.6;}
+  }
+  #statusBar {
+    position:absolute;
+    bottom:0;
+    width:100%;
+    background-color:black;
+    color:#0F0;
+    padding:5px;
+    font-size:16px;
+    text-align:center;
+  }
+  #controls {
+    position:absolute;
+    top:5px;
+    left:5px;
+    z-index:10;
+    display:flex;
+    flex-direction:column;
+    gap:5px;
+  }
+  button, select, label {
+    background-color:black;
+    color:#0F0;
+    border:1px solid #0F0;
+    font-family: monospace;
+    font-size:14px;
+    padding:2px 5px;
+    cursor:pointer;
+  }
+  input[type="checkbox"] {
+    accent-color: #0F0;
+  }
+  #audioCanvas {
+    position:absolute;
+    bottom:40px;
+    left:0;
+    width:100%;
+    height:100px;
+    z-index:5;
+  }
+</style>
+</head>
+<body>
+<div id="container">
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="videoCanvas"></canvas>
+  <canvas id="audioCanvas"></canvas>
+  <div id="overlay"></div>
+  <div id="controls">
+    <button id="emergencyBtn">緊急録画</button>
+    <label>幽霊検知モード
+      <select id="modeSelect">
+        <option value="normal">通常</option>
+        <option value="infra">赤外線風</option>
+        <option value="nv">暗視風</option>
+        <option value="ghost">高感度幽霊</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="markerToggle"> 定点マーカーON/OFF</label>
+    <label><input type="checkbox" id="motionToggle"> 加速度/ジャイロON/OFF</label>
+  </div>
+  <div id="statusBar">
+    <span id="status">SYSTEM INITIALIZING...</span>
+  </div>
+</div>
+
+<!-- ライブラリ読み込み -->
+<script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+<script src="app.js"></script>
+</body>
+</html>
