@@ -42,21 +42,30 @@ jobs:
 
       - name: Generate Debug Keystore
         run: |
-          keytool -genkey -v -keystore debug.keystore -alias ghostdebug -storepass android -keypass android -dname "CN=Ghost Detection, OU=None, O=None, L=None, S=None, C=None"
+          keytool -genkeypair -v -keystore debug.keystore -alias ghostdebug \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Ghost Detection, OU=None, O=None, L=None, S=None, C=None"
 
       - name: Sign APK
         run: |
-          jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore debug.keystore -storepass android -keypass android platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ghostdebug
+          jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
+            -keystore debug.keystore \
+            -storepass android -keypass android \
+            platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ghostdebug
 
       - name: Align APK
         run: |
-          $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk build/ghostdetection-signed.apk
+          mkdir -p build
+          $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 \
+            platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk \
+            build/GhostDetection-signed.apk
 
       - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
           name: GhostDetection-release-signed.apk
-          path: build/ghostdetection-signed.apk
+          path: build/GhostDetection-signed.apk
 
   build-ios:
     name: Build iOS Debug IPA
