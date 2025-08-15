@@ -1,4 +1,4 @@
-name: Build Ghost Detection App (Signed APK + iOS IPA)
+name: Build Ghost Detection App (Auto package.json + Signed APK + iOS IPA)
 
 on:
   push:
@@ -22,12 +22,40 @@ jobs:
       - name: Install Cordova
         run: npm install -g cordova
 
-      - name: Prepare Android SDK
-        uses: android-actions/setup-android@v2
-        with:
-          api-level: 34
-          target: android-34
-          build-tools: 34.0.0
+      - name: Generate package.json
+        run: |
+          cat <<EOF > package.json
+          {
+            "name": "ghost-detection",
+            "version": "1.0.0",
+            "description": "幽霊検知ハイブリッドアプリ",
+            "main": "main/index.html",
+            "scripts": {
+              "start": "cordova serve",
+              "build-android": "cordova build android --release -- --project=main",
+              "build-ios": "cordova build ios --debug --device -- --project=main"
+            },
+            "author": "Your Name",
+            "license": "ISC",
+            "dependencies": {},
+            "devDependencies": {},
+            "cordova": {
+              "plugins": [
+                "cordova-plugin-device",
+                "cordova-plugin-camera",
+                "cordova-plugin-media",
+                "cordova-plugin-file",
+                "cordova-plugin-whitelist",
+                "cordova-plugin-geolocation",
+                "cordova-plugin-network-information"
+              ],
+              "platforms": [
+                "android",
+                "ios"
+              ]
+            }
+          }
+          EOF
 
       - name: Install Project Dependencies
         run: npm install
@@ -82,6 +110,41 @@ jobs:
 
       - name: Install Cordova
         run: npm install -g cordova
+
+      - name: Generate package.json
+        run: |
+          cat <<EOF > package.json
+          {
+            "name": "ghost-detection",
+            "version": "1.0.0",
+            "description": "幽霊検知ハイブリッドアプリ",
+            "main": "main/index.html",
+            "scripts": {
+              "start": "cordova serve",
+              "build-android": "cordova build android --release -- --project=main",
+              "build-ios": "cordova build ios --debug --device -- --project=main"
+            },
+            "author": "Your Name",
+            "license": "ISC",
+            "dependencies": {},
+            "devDependencies": {},
+            "cordova": {
+              "plugins": [
+                "cordova-plugin-device",
+                "cordova-plugin-camera",
+                "cordova-plugin-media",
+                "cordova-plugin-file",
+                "cordova-plugin-whitelist",
+                "cordova-plugin-geolocation",
+                "cordova-plugin-network-information"
+              ],
+              "platforms": [
+                "android",
+                "ios"
+              ]
+            }
+          }
+          EOF
 
       - name: Install Project Dependencies
         run: npm install
