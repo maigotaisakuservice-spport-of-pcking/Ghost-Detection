@@ -2,49 +2,52 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ghost Detection</title>
 <style>
-  body { margin:0; background:black; color:#0F0; font-family: monospace; overflow:hidden; }
-  #videoCanvas, #audioCanvas { position:absolute; top:0; left:0; }
-  #overlay { position:absolute; top:0; left:0; width:100%; height:100%; background:red; opacity:0.5; display:none; animation:blink 1s infinite; }
-  @keyframes blink { 0%,50%,100% {opacity:0.5} 25%,75% {opacity:0;} }
-  #status { position:absolute; bottom:0; width:100%; padding:5px; background:rgba(0,0,0,0.8); text-align:center; font-size:1.2em; }
-  #controls { position:absolute; top:0; left:0; padding:5px; }
+  body { margin: 0; background: black; color: lime; font-family: monospace; }
+  #status { position: fixed; bottom: 0; width: 100%; padding: 5px; background: rgba(0,0,0,0.7); }
+  #overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(255,0,0,0.5); display:none; animation: blink 1s infinite; }
+  @keyframes blink { 0%,100%{opacity:0.5} 50%{opacity:1} }
+  canvas { display:block; }
+  #controls { position: fixed; top:0; left:0; padding:10px; background: rgba(0,0,0,0.5); }
+  button { margin:2px; background: black; color: lime; border:1px solid lime; padding:5px; }
 </style>
 </head>
 <body>
 
+<div id="controls">
+  <button id="markerBtn">Toggle Marker</button>
+  <button id="motionBtn">Toggle Motion</button>
+  <button id="recordBtn">Start Recording</button>
+  <button id="stopBtn">Stop Recording</button>
+</div>
+
 <canvas id="videoCanvas"></canvas>
-<canvas id="audioCanvas" style="bottom:50px;height:100px;"></canvas>
+<canvas id="audioCanvas" width="640" height="100"></canvas>
 <div id="overlay"></div>
 <div id="status">SYSTEM INITIALIZING...</div>
 
-<div id="controls">
-  <label>Mode:
-    <select id="modeSelect">
-      <option value="normal">Normal</option>
-      <option value="infra">Infrared</option>
-      <option value="nv">Night Vision</option>
-      <option value="ghost">Ghost Detection</option>
-    </select>
-  </label>
-  <label>Marker <input type="checkbox" id="markerToggle"></label>
-  <label>Motion <input type="checkbox" id="motionToggle"></label>
-  <button id="emergencyBtn">EMERGENCY RECORD</button>
-</div>
+<!-- ここからライブラリを全部埋め込む -->
 
 <script>
-  // app.js (Webpack用完全統合版)
+// --- p5.js（省略：ここに p5.min.js の中身を丸ごとコピー） ---
+</script>
+<script>
+// --- p5.sound.js（省略：ここに p5.sound.min.js の中身を丸ごとコピー） ---
+</script>
+<script>
+// --- TensorFlow.js（省略：ここに tf.min.js の中身を丸ごとコピー） ---
+</script>
+<script>
+// --- coco-ssd（省略：ここに coco-ssd.min.js の中身を丸ごとコピー） ---
+</script>
 
-import * as p5 from 'p5';
-import 'p5/lib/addons/p5.sound';
-import * as tf from '@tensorflow/tfjs';
-import * as cocoSsd from '@tensorflow-models/coco-ssd';
-
+<script>
 // ======================
+// ここから app.js の完全統合コード
+// ======================
+
 // グローバル変数
-// ======================
 let video, videoCanvas, videoCtx;
 let audioCtx, micStream, analyser, dataArray;
 let model;
@@ -60,15 +63,19 @@ let heartbeat = true;
 // UI Elements
 let statusEl, overlayEl;
 
-// ======================
 // 初期化関数
-// ======================
 async function init() {
   // UI取得
   videoCanvas = document.getElementById('videoCanvas');
   videoCtx = videoCanvas.getContext('2d');
   statusEl = document.getElementById('status');
   overlayEl = document.getElementById('overlay');
+
+  // ボタン設定
+  document.getElementById('markerBtn').addEventListener('click', ()=>markerEnabled=!markerEnabled);
+  document.getElementById('motionBtn').addEventListener('click', ()=>motionEnabled=!motionEnabled);
+  document.getElementById('recordBtn').addEventListener('click', startCanvasRecording);
+  document.getElementById('stopBtn').addEventListener('click', stopCanvasRecording);
 
   // カメラ・マイク初期化
   await initMedia();
@@ -80,26 +87,24 @@ async function init() {
   requestAnimationFrame(drawLoop);
 }
 
-// ======================
 // メディア初期化
-// ======================
 async function initMedia() {
   try {
     video = document.createElement('video');
     video.autoplay = true;
     video.playsInline = true;
 
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
     video.srcObject = stream;
 
     videoCanvas.width = video.videoWidth || 640;
     videoCanvas.height = video.videoHeight || 480;
 
     mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.ondataavailable = e=>{if(e.data.size>0) recordedChunks.push(e.data)};
     mediaRecorder.start();
 
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
     micStream = audioCtx.createMediaStreamSource(stream);
     analyser = audioCtx.createAnalyser();
     micStream.connect(analyser);
@@ -107,196 +112,170 @@ async function initMedia() {
     dataArray = new Uint8Array(analyser.frequencyBinCount);
 
     updateStatus('AWAITING ANOMALY...');
-  } catch (e) {
+  } catch(e) {
     console.error(e);
     updateStatus('ERROR: CAMERA/MIC ACCESS FAILED');
   }
 }
 
-// ======================
 // TensorFlowモデルロード
-// ======================
 async function loadModel() {
   updateStatus('LOADING MODEL...');
   model = await cocoSsd.load();
   updateStatus('MODEL LOADED');
 }
 
-// ======================
 // 加速度・ジャイロ初期化
-// ======================
-function initMotion() {
-  document.addEventListener('deviceready', () => {
-    if (motionEnabled && navigator.accelerometer) {
+function initMotion(){
+  document.addEventListener('deviceready', ()=>{
+    if(motionEnabled && navigator.accelerometer){
       navigator.accelerometer.watchAcceleration(
-        accel => {
-          const total = Math.abs(accel.x) + Math.abs(accel.y) + Math.abs(accel.z);
-          if (total > 30) triggerUnknownAlert();
+        accel=>{
+          const total=Math.abs(accel.x)+Math.abs(accel.y)+Math.abs(accel.z);
+          if(total>30) triggerUnknownAlert();
         },
-        err => console.error(err),
-        { frequency: 200 }
+        err=>console.error(err),
+        {frequency:200}
       );
     }
-  }, false);
+  },false);
 }
 
-// ======================
 // 描画ループ
-// ======================
-async function drawLoop() {
-  heartbeat = true;
+async function drawLoop(){
+  heartbeat=true;
+  if(video.videoWidth && video.videoHeight){
+    videoCanvas.width=video.videoWidth;
+    videoCanvas.height=video.videoHeight;
+    videoCtx.drawImage(video,0,0);
 
-  if (video.videoWidth && video.videoHeight) {
-    videoCanvas.width = video.videoWidth;
-    videoCanvas.height = video.videoHeight;
+    let frame=videoCtx.getImageData(0,0,videoCanvas.width,videoCanvas.height);
+    let data=frame.data;
 
-    videoCtx.drawImage(video, 0, 0);
-
-    let frame = videoCtx.getImageData(0, 0, videoCanvas.width, videoCanvas.height);
-    let data = frame.data;
-
-    // 幽霊軌跡・残像
     prevFrames.push(new Uint8ClampedArray(data));
-    if (prevFrames.length > maxHistory) prevFrames.shift();
+    if(prevFrames.length>maxHistory) prevFrames.shift();
 
-    let diffPositions = [];
-    if (prevFrames.length >= 2) {
-      const prev = prevFrames[prevFrames.length - 2];
-      for (let i = 0; i < data.length; i += 4) {
-        const delta = Math.abs(data[i] - prev[i]) +
-                      Math.abs(data[i + 1] - prev[i + 1]) +
-                      Math.abs(data[i + 2] - prev[i + 2]);
-        if (delta > 50) {
-          const idx = i / 4;
-          const x = idx % videoCanvas.width;
-          const y = Math.floor(idx / videoCanvas.width);
-          diffPositions.push({ x, y });
+    let diffPositions=[];
+    if(prevFrames.length>=2){
+      const prev=prevFrames[prevFrames.length-2];
+      for(let i=0;i<data.length;i+=4){
+        const delta=Math.abs(data[i]-prev[i])+
+                    Math.abs(data[i+1]-prev[i+1])+
+                    Math.abs(data[i+2]-prev[i+2]);
+        if(delta>50){
+          const idx=i/4;
+          const x=idx%videoCanvas.width;
+          const y=Math.floor(idx/videoCanvas.width);
+          diffPositions.push({x,y});
         }
       }
-      if (diffPositions.length / (data.length / 4) > 0.02) triggerUnknownAlert();
+      if(diffPositions.length/(data.length/4)>0.02) triggerUnknownAlert();
       drawGhostTrails(diffPositions);
     }
-    videoCtx.putImageData(frame, 0, 0);
+    videoCtx.putImageData(frame,0,0);
   }
 
   drawAudio();
   await detectUnknownEntities();
-
   requestAnimationFrame(drawLoop);
 }
 
-// ======================
 // 幽霊軌跡描画
-// ======================
-function drawGhostTrails(diffPositions) {
-  if (diffPositions.length === 0) return;
+function drawGhostTrails(diffPositions){
+  if(diffPositions.length===0) return;
   ghostTrails.push(diffPositions);
-  if (ghostTrails.length > maxTrails) ghostTrails.shift();
-
-  videoCtx.strokeStyle = 'lime';
-  videoCtx.lineWidth = 2;
-  ghostTrails.forEach(trail => {
+  if(ghostTrails.length>maxTrails) ghostTrails.shift();
+  videoCtx.strokeStyle='lime';
+  videoCtx.lineWidth=2;
+  ghostTrails.forEach(trail=>{
     videoCtx.beginPath();
-    trail.forEach((p, i) => i === 0 ? videoCtx.moveTo(p.x, p.y) : videoCtx.lineTo(p.x, p.y));
+    trail.forEach((p,i)=>i===0?videoCtx.moveTo(p.x,p.y):videoCtx.lineTo(p.x,p.y));
     videoCtx.stroke();
   });
 }
 
-// ======================
 // オーディオ解析
-// ======================
-function drawAudio() {
+function drawAudio(){
   analyser.getByteFrequencyData(dataArray);
-  const audioCanvas = document.getElementById('audioCanvas');
-  const ctx = audioCanvas.getContext('2d');
-  audioCanvas.width = audioCanvas.clientWidth;
-  audioCanvas.height = audioCanvas.clientHeight;
-  ctx.clearRect(0, 0, audioCanvas.width, audioCanvas.height);
-  ctx.fillStyle = 'lime';
-  const barWidth = audioCanvas.width / dataArray.length;
-  for (let i = 0; i < dataArray.length; i++) {
-    const barHeight = dataArray[i];
-    ctx.fillRect(i * barWidth, audioCanvas.height - barHeight, barWidth, barHeight);
-    if (barHeight > 200) triggerAudioAlert();
+  const audioCanvas=document.getElementById('audioCanvas');
+  const ctx=audioCanvas.getContext('2d');
+  audioCanvas.width=audioCanvas.clientWidth;
+  audioCanvas.height=audioCanvas.clientHeight;
+  ctx.clearRect(0,0,audioCanvas.width,audioCanvas.height);
+  ctx.fillStyle='lime';
+  const barWidth=audioCanvas.width/dataArray.length;
+  for(let i=0;i<dataArray.length;i++){
+    const barHeight=dataArray[i];
+    ctx.fillRect(i*barWidth,audioCanvas.height-barHeight,barWidth,barHeight);
+    if(barHeight>200) triggerAudioAlert();
   }
 }
 
-// ======================
 // 警告
-// ======================
-function triggerAudioAlert() { showOverlay('AUDIO ANOMALY DETECTED'); }
-function triggerUnknownAlert() { showOverlay('UNKNOWN ENTITY DETECTED'); }
+function triggerAudioAlert(){showOverlay('AUDIO ANOMALY DETECTED');}
+function triggerUnknownAlert(){showOverlay('UNKNOWN ENTITY DETECTED');}
 
-// ======================
 // 赤オーバーレイ表示
-// ======================
-function showOverlay(msg) {
-  overlayEl.style.display = 'block';
+function showOverlay(msg){
+  overlayEl.style.display='block';
   updateStatus(msg);
-  setTimeout(() => overlayEl.style.display = 'none', 1000);
+  setTimeout(()=>overlayEl.style.display='none',1000);
 }
 
-// ======================
 // TensorFlow物体検知
-// ======================
-async function detectUnknownEntities() {
-  if (!model || !video.videoWidth) return;
-  const predictions = await model.detect(video);
-  predictions.forEach(pred => {
-    if (!['person', 'chair', 'table'].includes(pred.class)) {
+async function detectUnknownEntities(){
+  if(!model||!video.videoWidth) return;
+  const predictions=await model.detect(video);
+  predictions.forEach(pred=>{
+    if(!['person','chair','table'].includes(pred.class)){
       triggerUnknownAlert();
     }
   });
 }
 
-// ======================
 // 緊急録画
-// ======================
 let canvasRecorder;
-function startCanvasRecording() {
-  const stream = videoCanvas.captureStream(30);
-  canvasRecorder = new MediaRecorder(stream);
-  let chunks = [];
-  canvasRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-  canvasRecorder.onstop = () => {
-    const blob = new Blob(chunks, { type: 'video/webm' });
-    saveBlob(blob, 'ghost_trail_recording.webm');
-    chunks = [];
+function startCanvasRecording(){
+  const stream=videoCanvas.captureStream(30);
+  canvasRecorder=new MediaRecorder(stream);
+  let chunks=[];
+  canvasRecorder.ondataavailable=e=>{if(e.data.size>0) chunks.push(e.data)};
+  canvasRecorder.onstop=()=>{
+    const blob=new Blob(chunks,{type:'video/webm'});
+    saveBlob(blob,'ghost_trail_recording.webm');
+    chunks=[];
   };
   canvasRecorder.start();
 }
-function stopCanvasRecording() { if (canvasRecorder && canvasRecorder.state === 'recording') canvasRecorder.stop(); }
-function saveBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
+function stopCanvasRecording(){if(canvasRecorder&&canvasRecorder.state==='recording') canvasRecorder.stop();}
+function saveBlob(blob,filename){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=filename;a.click();
   URL.revokeObjectURL(url);
 }
 
-// ======================
 // ステータス更新
-// ======================
-function updateStatus(msg) { statusEl.textContent = msg; }
+function updateStatus(msg){statusEl.textContent=msg;}
 
-// ======================
 // 自動復旧
-// ======================
-setInterval(() => {
-  if (!heartbeat) {
+setInterval(()=>{
+  if(!heartbeat){
     updateStatus('SYSTEM RECOVERING...');
     restartStreams();
   }
-  heartbeat = false;
-}, 2000);
-async function restartStreams() {
-  if (videoStream) videoStream.getTracks().forEach(t => t.stop());
-  if (micStream) micStream.disconnect();
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  heartbeat=false;
+},2000);
+async function restartStreams(){
+  if(video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop());
+  if(micStream) micStream.disconnect();
+  if(mediaRecorder&&mediaRecorder.state!=='inactive') mediaRecorder.stop();
   await initMedia();
 }
 
-// ======================
 // 初期化呼び出し
-// ======================
-window.onload = init;
+document.addEventListener('deviceready', init, false);
+
 </script>
+</body>
+</html>
