@@ -1,4 +1,4 @@
-name: Build Ghost Detection App
+name: Build Ghost Detection App (Signed APK + iOS IPA)
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-android:
-    name: Build Android Debug
+    name: Build Android Release (Signed)
     runs-on: ubuntu-latest
 
     steps:
@@ -37,14 +37,26 @@ jobs:
           cordova platform remove android || true
           cordova platform add android
 
-      - name: Build Android Debug APK
-        run: cordova build android --debug -- --project=main
-          
-      - name: Upload APK
+      - name: Build Android Release APK
+        run: cordova build android --release -- --project=main
+
+      - name: Generate Debug Keystore
+        run: |
+          keytool -genkey -v -keystore debug.keystore -alias ghostdebug -storepass android -keypass android -dname "CN=Ghost Detection, OU=None, O=None, L=None, S=None, C=None"
+
+      - name: Sign APK
+        run: |
+          jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore debug.keystore -storepass android -keypass android platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ghostdebug
+
+      - name: Align APK
+        run: |
+          $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk build/ghostdetection-signed.apk
+
+      - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: GhostDetection-debug.apk
-          path: platforms/android/app/build/outputs/apk/debug/app-debug.apk
+          name: GhostDetection-release-signed.apk
+          path: build/ghostdetection-signed.apk
 
   build-ios:
     name: Build iOS Debug IPA
@@ -73,12 +85,40 @@ jobs:
       - name: Build iOS Debug for Device
         run: cordova build ios --debug --device -- --project=main
 
-      - name: Package .app to .ipa
+      - name: Archive .app with xcodebuild
         run: |
           mkdir -p build/ios
-          xcrun -sdk iphoneos PackageApplication \
-            -v platforms/ios/build/device/Ghost\ Detection.app \
-            -o $PWD/build/ios/GhostDetection.ipa
+          xcodebuild -workspace platforms/ios/GhostDetection.xcworkspace \
+            -scheme "Ghost Detection" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -archivePath $PWD/build/GhostDetection.xcarchive archive
+
+      - name: Create exportOptions.plist
+        run: |
+          cat <<EOF > build/ios/exportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>destination</key>
+            <string>export</string>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Export IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath $PWD/build/GhostDetection.xcarchive \
+            -exportOptionsPlist $PWD/build/ios/exportOptions.plist \
+            -exportPath $PWD/build/ios
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
