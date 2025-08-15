@@ -34,10 +34,269 @@
   <button id="emergencyBtn">EMERGENCY RECORD</button>
 </div>
 
-<!-- p5.js ローカル版埋め込み -->
-<script src="lib/p5.min.js"></script>
-<script src="lib/p5.sound.min.js"></script>
+<script>
+  // app.js (Webpack用完全統合版)
 
-<!-- TensorFlow.js ローカル版埋め込み -->
-<script src="lib/tf.min.js"></script>
-<script src="lib/coco-ssd.min.js"></script>
+import * as p5 from 'p5';
+import 'p5/lib/addons/p5.sound';
+import * as tf from '@tensorflow/tfjs';
+import * as cocoSsd from '@tensorflow-models/coco-ssd';
+
+// ======================
+// グローバル変数
+// ======================
+let video, videoCanvas, videoCtx;
+let audioCtx, micStream, analyser, dataArray;
+let model;
+let recordedChunks = [];
+let mediaRecorder;
+let prevFrames = [], ghostTrails = [];
+const maxHistory = 5, maxTrails = 10;
+
+let markerEnabled = false;
+let motionEnabled = false;
+let heartbeat = true;
+
+// UI Elements
+let statusEl, overlayEl;
+
+// ======================
+// 初期化関数
+// ======================
+async function init() {
+  // UI取得
+  videoCanvas = document.getElementById('videoCanvas');
+  videoCtx = videoCanvas.getContext('2d');
+  statusEl = document.getElementById('status');
+  overlayEl = document.getElementById('overlay');
+
+  // カメラ・マイク初期化
+  await initMedia();
+  // TensorFlowモデルロード
+  await loadModel();
+  // 加速度・ジャイロ初期化
+  initMotion();
+  // 描画ループ開始
+  requestAnimationFrame(drawLoop);
+}
+
+// ======================
+// メディア初期化
+// ======================
+async function initMedia() {
+  try {
+    video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    video.srcObject = stream;
+
+    videoCanvas.width = video.videoWidth || 640;
+    videoCanvas.height = video.videoHeight || 480;
+
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.start();
+
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    micStream = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    micStream.connect(analyser);
+    analyser.fftSize = 256;
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+    updateStatus('AWAITING ANOMALY...');
+  } catch (e) {
+    console.error(e);
+    updateStatus('ERROR: CAMERA/MIC ACCESS FAILED');
+  }
+}
+
+// ======================
+// TensorFlowモデルロード
+// ======================
+async function loadModel() {
+  updateStatus('LOADING MODEL...');
+  model = await cocoSsd.load();
+  updateStatus('MODEL LOADED');
+}
+
+// ======================
+// 加速度・ジャイロ初期化
+// ======================
+function initMotion() {
+  document.addEventListener('deviceready', () => {
+    if (motionEnabled && navigator.accelerometer) {
+      navigator.accelerometer.watchAcceleration(
+        accel => {
+          const total = Math.abs(accel.x) + Math.abs(accel.y) + Math.abs(accel.z);
+          if (total > 30) triggerUnknownAlert();
+        },
+        err => console.error(err),
+        { frequency: 200 }
+      );
+    }
+  }, false);
+}
+
+// ======================
+// 描画ループ
+// ======================
+async function drawLoop() {
+  heartbeat = true;
+
+  if (video.videoWidth && video.videoHeight) {
+    videoCanvas.width = video.videoWidth;
+    videoCanvas.height = video.videoHeight;
+
+    videoCtx.drawImage(video, 0, 0);
+
+    let frame = videoCtx.getImageData(0, 0, videoCanvas.width, videoCanvas.height);
+    let data = frame.data;
+
+    // 幽霊軌跡・残像
+    prevFrames.push(new Uint8ClampedArray(data));
+    if (prevFrames.length > maxHistory) prevFrames.shift();
+
+    let diffPositions = [];
+    if (prevFrames.length >= 2) {
+      const prev = prevFrames[prevFrames.length - 2];
+      for (let i = 0; i < data.length; i += 4) {
+        const delta = Math.abs(data[i] - prev[i]) +
+                      Math.abs(data[i + 1] - prev[i + 1]) +
+                      Math.abs(data[i + 2] - prev[i + 2]);
+        if (delta > 50) {
+          const idx = i / 4;
+          const x = idx % videoCanvas.width;
+          const y = Math.floor(idx / videoCanvas.width);
+          diffPositions.push({ x, y });
+        }
+      }
+      if (diffPositions.length / (data.length / 4) > 0.02) triggerUnknownAlert();
+      drawGhostTrails(diffPositions);
+    }
+    videoCtx.putImageData(frame, 0, 0);
+  }
+
+  drawAudio();
+  await detectUnknownEntities();
+
+  requestAnimationFrame(drawLoop);
+}
+
+// ======================
+// 幽霊軌跡描画
+// ======================
+function drawGhostTrails(diffPositions) {
+  if (diffPositions.length === 0) return;
+  ghostTrails.push(diffPositions);
+  if (ghostTrails.length > maxTrails) ghostTrails.shift();
+
+  videoCtx.strokeStyle = 'lime';
+  videoCtx.lineWidth = 2;
+  ghostTrails.forEach(trail => {
+    videoCtx.beginPath();
+    trail.forEach((p, i) => i === 0 ? videoCtx.moveTo(p.x, p.y) : videoCtx.lineTo(p.x, p.y));
+    videoCtx.stroke();
+  });
+}
+
+// ======================
+// オーディオ解析
+// ======================
+function drawAudio() {
+  analyser.getByteFrequencyData(dataArray);
+  const audioCanvas = document.getElementById('audioCanvas');
+  const ctx = audioCanvas.getContext('2d');
+  audioCanvas.width = audioCanvas.clientWidth;
+  audioCanvas.height = audioCanvas.clientHeight;
+  ctx.clearRect(0, 0, audioCanvas.width, audioCanvas.height);
+  ctx.fillStyle = 'lime';
+  const barWidth = audioCanvas.width / dataArray.length;
+  for (let i = 0; i < dataArray.length; i++) {
+    const barHeight = dataArray[i];
+    ctx.fillRect(i * barWidth, audioCanvas.height - barHeight, barWidth, barHeight);
+    if (barHeight > 200) triggerAudioAlert();
+  }
+}
+
+// ======================
+// 警告
+// ======================
+function triggerAudioAlert() { showOverlay('AUDIO ANOMALY DETECTED'); }
+function triggerUnknownAlert() { showOverlay('UNKNOWN ENTITY DETECTED'); }
+
+// ======================
+// 赤オーバーレイ表示
+// ======================
+function showOverlay(msg) {
+  overlayEl.style.display = 'block';
+  updateStatus(msg);
+  setTimeout(() => overlayEl.style.display = 'none', 1000);
+}
+
+// ======================
+// TensorFlow物体検知
+// ======================
+async function detectUnknownEntities() {
+  if (!model || !video.videoWidth) return;
+  const predictions = await model.detect(video);
+  predictions.forEach(pred => {
+    if (!['person', 'chair', 'table'].includes(pred.class)) {
+      triggerUnknownAlert();
+    }
+  });
+}
+
+// ======================
+// 緊急録画
+// ======================
+let canvasRecorder;
+function startCanvasRecording() {
+  const stream = videoCanvas.captureStream(30);
+  canvasRecorder = new MediaRecorder(stream);
+  let chunks = [];
+  canvasRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+  canvasRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'video/webm' });
+    saveBlob(blob, 'ghost_trail_recording.webm');
+    chunks = [];
+  };
+  canvasRecorder.start();
+}
+function stopCanvasRecording() { if (canvasRecorder && canvasRecorder.state === 'recording') canvasRecorder.stop(); }
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ======================
+// ステータス更新
+// ======================
+function updateStatus(msg) { statusEl.textContent = msg; }
+
+// ======================
+// 自動復旧
+// ======================
+setInterval(() => {
+  if (!heartbeat) {
+    updateStatus('SYSTEM RECOVERING...');
+    restartStreams();
+  }
+  heartbeat = false;
+}, 2000);
+async function restartStreams() {
+  if (videoStream) videoStream.getTracks().forEach(t => t.stop());
+  if (micStream) micStream.disconnect();
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  await initMedia();
+}
+
+// ======================
+// 初期化呼び出し
+// ======================
+window.onload = init;
+</script>
