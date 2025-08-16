@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Ghost Detection</title>
+<style>
+  body { margin:0; background:black; color:#00ff00; font-family:monospace; }
+  #videoContainer { position:relative; width:640px; margin:auto; }
+  video, canvas { display:block; width:100%; height:auto; }
+  #overlay { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(255,0,0,0.3); display:none; animation:flash 1s infinite; }
+  @keyframes flash { 0%,50%,100%{opacity:0.3;} 25%,75%{opacity:0;} }
+  #status { text-align:center; margin-top:10px; }
+  #controls { text-align:center; margin:10px; }
+  #controls input { width:50px; }
+  button { margin-left:5px; }
+</style>
+<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/addons/p5.sound.min.js"></script>
+</head>
+<body>
+<h1 style="text-align:center;">Ghost Detection System</h1>
+<div id="videoContainer">
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="canvas"></canvas>
+  <div id="overlay"></div>
+</div>
+<div id="controls">
+  録画時間（分）: <input type="number" id="recordTime" value="1" min="1">
+  <label><input type="checkbox" id="motionToggle" checked> 加速度センサーON</label>
+  <button id="recordBtn">緊急録画開始</button>
+  <button id="gdriveAuthBtn">Google Drive 認証</button>
+</div>
+<div id="status">SYSTEM INITIALIZING...</div>
+
+<script>
+(async () => {
+const video=document.getElementById('video');
+const canvas=document.getElementById('canvas');
+const ctx=canvas.getContext('2d');
+const overlay=document.getElementById('overlay');
+const status=document.getElementById('status');
+const recordInput=document.getElementById('recordTime');
+const motionToggle=document.getElementById('motionToggle');
+const recordBtn=document.getElementById('recordBtn');
+const gdriveAuthBtn=document.getElementById('gdriveAuthBtn');
+
+let stream, mediaRecorder, chunks=[];
+let audioContext, analyser;
+let model;
+let motionData={x:0,y:0,z:0};
+let recording=false;
+let gapiInited=false;
+
+// Google API 初期化
+const CLIENT_ID = '172049251767-d7gv3qiicoc0ml5e2n445nhud8cm58fc.apps.googleusercontent.com';
+const API_KEY = 'YOUR_API_KEY_HERE';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+function gapiInit(){
+  return new Promise(resolve=>{
+    gapi.load('client:auth2', async () => {
+      await gapi.client.init({apiKey:API_KEY, clientId:CLIENT_ID, discoveryDocs:["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"], scope:SCOPES});
+      gapiInited=true;
+      resolve();
+    });
+  });
+}
+
+gdriveAuthBtn.onclick=async()=>{
+  if(!gapiInited) await gapiInit();
+  await gapi.auth2.getAuthInstance().signIn();
+  alert('Google Drive 認証完了');
+};
+
+// カメラ・マイク権限
+try{
+  stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480}, audio:true});
+  video.srcObject=stream;
+  status.innerText="AWAITING ANOMALY...";
+}catch(e){ status.innerText="PERMISSION DENIED"; console.error(e); return; }
+
+// 音声解析
+audioContext=new (window.AudioContext||window.webkitAudioContext)();
+const source=audioContext.createMediaStreamSource(stream);
+analyser=new p5.FFT(0.8,512);
+analyser.setInput(source);
+function drawAudio(){
+  requestAnimationFrame(drawAudio);
+  const spectrum=analyser.analyze();
+  ctx.fillStyle='black'; ctx.fillRect(0,0,canvas.width,50);
+  ctx.fillStyle='lime';
+  for(let i=0;i<spectrum.length;i++){
+    let h=spectrum[i]/2;
+    ctx.fillRect(i,50-h,1,h);
+    if(spectrum[i]>200){
+      overlay.style.display='block';
+      status.innerText='AUDIO ANOMALY DETECTED';
+    }
+  }
+}
+drawAudio();
+
+// TensorFlow.js
+model=await cocoSsd.load({base:'lite_mobilenet_v2'});
+canvas.width=video.videoWidth;
+canvas.height=video.videoHeight;
+async function detectFrame(){
+  const predictions=await model.detect(video);
+  let unknownDetected=false;
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  predictions.forEach(pred=>{
+    ctx.strokeStyle='lime'; ctx.lineWidth=2;
+    ctx.strokeRect(pred.bbox[0],pred.bbox[1],pred.bbox[2],pred.bbox[3]);
+    ctx.fillStyle='lime'; ctx.fillText(pred.class,pred.bbox[0],pred.bbox[1]-5);
+    if(!['person','chair','table'].includes(pred.class)) unknownDetected=true;
+  });
+  if(unknownDetected){ overlay.style.display='block'; status.innerText='UNKNOWN ENTITY DETECTED'; }
+  else if(status.innerText.includes('DETECTED')){ overlay.style.display='none'; status.innerText='AWAITING ANOMALY...'; }
+  requestAnimationFrame(detectFrame);
+}
+detectFrame();
+
+// 加速度
+window.addEventListener('devicemotion', e=>{
+  if(!motionToggle.checked) return;
+  motionData.x=e.accelerationIncludingGravity.x;
+  motionData.y=e.accelerationIncludingGravity.y;
+  motionData.z=e.accelerationIncludingGravity.z;
+  if(Math.abs(motionData.x)+Math.abs(motionData.y)+Math.abs(motionData.z)>30){
+    overlay.style.display='block';
+    status.innerText='MOTION ANOMALY DETECTED';
+  }
+});
+
+// 録画と保存
+async function saveToDrive(blob){
+  if(!gapiInited) return;
+  const fileMetadata={name:'emergency_recording.webm'};
+  const form=new FormData();
+  form.append('metadata', new Blob([JSON.stringify(fileMetadata)],{type:'application/json'}));
+  form.append('file', blob);
+  await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+    method:'POST',
+    headers: { Authorization: 'Bearer '+gapi.auth.getToken().access_token },
+    body: form
+  });
+}
+
+function startRecording(){
+  const time=parseInt(recordInput.value)||1;
+  mediaRecorder=new MediaRecorder(stream,{mimeType:'video/webm'});
+  chunks=[];
+  mediaRecorder.ondataavailable=e=>chunks.push(e.data);
+  mediaRecorder.onstop=async()=>{
+    const blob=new Blob(chunks,{type:'video/webm'});
+    // ローカル保存
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download='emergency_recording.webm';
+    a.click();
+    // Google Drive 保存
+    await saveToDrive(blob);
+    recording=false;
+  };
+  mediaRecorder.start();
+  recording=true;
+  setTimeout(()=>{ if(recording) mediaRecorder.stop(); }, time*60*1000);
+}
+
+recordBtn.onclick=startRecording;
+
+})();
+</script>
+</body>
+</html>
