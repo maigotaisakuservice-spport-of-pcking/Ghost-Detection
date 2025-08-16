@@ -74,7 +74,7 @@ jobs:
           cordova plugin add cordova-plugin-media
           cordova plugin add cordova-plugin-camera
           cordova plugin add cordova-plugin-file
-          cordova plugin add cordova-plugin-motion
+          cordova plugin add cordova-plugin-device-motion
 
       - name: Build unsigned APK
         run: cordova build android --release -- --no-sign
