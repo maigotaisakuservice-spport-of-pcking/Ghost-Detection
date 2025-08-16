@@ -1,4 +1,4 @@
-name: Cordova APK Build and Sign
+name: Cordova APK Build and Sign (Android 15)
 
 on:
   push:
@@ -48,7 +48,8 @@ jobs:
               <author>${AUTHOR}</author>
               <content src='index.html'/>
               <preference name='android-minSdkVersion' value='21' />
-              <preference name='android-targetSdkVersion' value='33' />
+              <preference name='android-targetSdkVersion' value='35' />
+              <preference name='android-compileSdkVersion' value='35' />
               <preference name='BackupWebStorage' value='none'/>
             </widget>" > config.xml
           fi
@@ -65,12 +66,12 @@ jobs:
           echo "export ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
           echo "export PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$PATH" >> $GITHUB_ENV
           yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
-          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Add Android platform (Cordova-Android 11)
+      - name: Add Android platform (Cordova-Android 14)
         run: |
           cordova platform remove android || true
-          cordova platform add android@11
+          cordova platform add android@14.0.1
 
       - name: Install Cordova plugins
         run: |
