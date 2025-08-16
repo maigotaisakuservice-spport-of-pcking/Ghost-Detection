@@ -1,20 +1,30 @@
-name: Build Ghost Detection App (Auto Cordova + Signed APK + iOS IPA)
+name: Cordova APK Build and Sign
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
   build-android:
-    name: Build Android Release (Signed)
     runs-on: ubuntu-latest
 
+    env:
+      APP_NAME: Ghost Detection
+      PACKAGE_NAME: PDGDeplopmet.pcdaimaougroup.Ghost.Detection
+      VERSION_CODE: 1
+      VERSION_NAME: 1.0.0
+      AUTHOR: "パソコン大魔王グループ"
+      KEYSTORE_PASSWORD: z@031148
+      KEY_ALIAS: PDGDeplopment
+      KEY_PASSWORD: z@031148
+
     steps:
-      - name: Checkout Repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
@@ -22,148 +32,70 @@ jobs:
       - name: Install Cordova
         run: npm install -g cordova
 
-      - name: Create Cordova Project
+      - name: Create Cordova config.xml if not exists
         run: |
-          rm -rf temp
-          cordova create temp PDGAppCreate.pcdaimaougroup.Ghost.Detection "Ghost Detection"
-          cp -r main/* temp/www/
-          cd temp
+          if [ ! -f config.xml ]; then
+            echo "<?xml version='1.0' encoding='utf-8'?>
+            <widget id='${PACKAGE_NAME}' version='${VERSION_NAME}' xmlns='http://www.w3.org/ns/widgets' xmlns:cdv='http://cordova.apache.org/ns/1.0'>
+              <name>${APP_NAME}</name>
+              <description>Cordova App by ${AUTHOR}</description>
+              <author>${AUTHOR}</author>
+              <content src='index.html'/>
+              <preference name='android-minSdkVersion' value='21' />
+              <preference name='android-targetSdkVersion' value='33' />
+              <preference name='BackupWebStorage' value='none'/>
+            </widget>" > config.xml
+          fi
 
-      - name: Add Android Platform
+      - name: Install Android SDK dependencies
         run: |
-          cd temp
+          sudo apt-get update
+          sudo apt-get install -y openjdk-11-jdk unzip wget
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9123335_latest.zip -O cmdline-tools.zip
+          unzip cmdline-tools.zip -d $HOME/android-sdk
+          mkdir -p $HOME/android-sdk/cmdline-tools/latest
+          mv $HOME/android-sdk/cmdline-tools/* $HOME/android-sdk/cmdline-tools/latest/
+          export ANDROID_HOME=$HOME/android-sdk
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+
+      - name: Add Android platform
+        run: |
+          cordova platform remove android || true
           cordova platform add android
 
-      - name: Install Cordova Plugins
-        run: |
-          cd temp
-          cordova plugin add cordova-plugin-device
-          cordova plugin add cordova-plugin-camera
-          cordova plugin add cordova-plugin-media
-          cordova plugin add cordova-plugin-file
-          cordova plugin add cordova-plugin-whitelist
-          cordova plugin add cordova-plugin-geolocation
-          cordova plugin add cordova-plugin-network-information
+      - name: Build unsigned APK
+        run: cordova build android --release -- --no-sign
 
-      - name: Build Android Release APK
+      - name: Generate keystore
         run: |
-          cd temp
-          cordova build android --release
-
-      - name: Generate Debug Keystore
-        run: |
-          cd temp
-          keytool -genkeypair -v -keystore debug.keystore -alias ghostdebug \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass android -keypass android \
-            -dname "CN=Ghost Detection, OU=None, O=None, L=None, S=None, C=None"
+          keytool -genkeypair \
+            -alias $KEY_ALIAS \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -keystore my-release-key.keystore \
+            -storepass $KEYSTORE_PASSWORD \
+            -keypass $KEY_PASSWORD \
+            -dname "CN=PDGDeplopment, OU=Development, O=パソコン大魔王グループ, L=Tokyo, ST=Tokyo, C=JP"
 
       - name: Sign APK
         run: |
-          cd temp
           jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
-            -keystore debug.keystore \
-            -storepass android -keypass android \
-            platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ghostdebug
+            -keystore my-release-key.keystore \
+            -storepass $KEYSTORE_PASSWORD \
+            -keypass $KEY_PASSWORD \
+            platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk $KEY_ALIAS
 
       - name: Align APK
         run: |
-          cd temp
-          mkdir -p build
-          $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 \
+          zipalign -v -p 4 \
             platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk \
-            build/GhostDetection-signed.apk
+            platforms/android/app/build/outputs/apk/release/GhostDetection-release.apk
 
       - name: Upload Signed APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: GhostDetection-release-signed.apk
-          path: temp/build/GhostDetection-signed.apk
-
-  build-ios:
-    name: Build iOS Debug IPA
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-
-      - name: Install Cordova
-        run: npm install -g cordova
-
-      - name: Create Cordova Project
-        run: |
-          rm -rf temp
-          cordova create temp PDGAppCreate.pcdaimaougroup.Ghost.Detection "Ghost Detection"
-          cp -r main/* temp/www/
-          cd temp
-
-      - name: Add iOS Platform
-        run: |
-          cd temp
-          cordova platform add ios
-
-      - name: Install Cordova Plugins
-        run: |
-          cd temp
-          cordova plugin add cordova-plugin-device
-          cordova plugin add cordova-plugin-camera
-          cordova plugin add cordova-plugin-media
-          cordova plugin add cordova-plugin-file
-          cordova plugin add cordova-plugin-whitelist
-          cordova plugin add cordova-plugin-geolocation
-          cordova plugin add cordova-plugin-network-information
-
-      - name: Build iOS Debug for Device
-        run: |
-          cd temp
-          cordova build ios --debug --device
-
-      - name: Archive .app with xcodebuild
-        run: |
-          cd temp
-          mkdir -p build/ios
-          xcodebuild -workspace platforms/ios/GhostDetection.xcworkspace \
-            -scheme "Ghost Detection" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            -archivePath $PWD/build/GhostDetection.xcarchive archive
-
-      - name: Create exportOptions.plist
-        run: |
-          cd temp
-          cat <<EOF > build/ios/exportOptions.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>development</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>compileBitcode</key>
-            <false/>
-            <key>destination</key>
-            <string>export</string>
-          </dict>
-          </plist>
-          EOF
-
-      - name: Export IPA
-        run: |
-          cd temp
-          xcodebuild -exportArchive \
-            -archivePath $PWD/build/GhostDetection.xcarchive \
-            -exportOptionsPlist $PWD/build/ios/exportOptions.plist \
-            -exportPath $PWD/build/ios
-
-      - name: Upload IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: GhostDetection-iOS-Debug-IPA
-          path: temp/build/ios/GhostDetection.ipa
+          name: GhostDetection-signed-apk
+          path: platforms/android/app/build/outputs/apk/release/GhostDetection-release.apk
