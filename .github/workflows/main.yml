@@ -84,7 +84,7 @@ jobs:
           cordova plugin add cordova-plugin-device-motion
 
       - name: Build unsigned APK (release)
-        run: cordova build android --release
+        run: cordova build android --release -- --packageType=apk
 
       - name: Generate keystore
         run: |
