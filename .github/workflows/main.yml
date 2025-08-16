@@ -1,4 +1,4 @@
-name: Cordova APK Build and Sign (Android 15)
+name: Cordova APK Debug Build (Android 15)
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-android:
+  build-android-debug:
     runs-on: ubuntu-latest
 
     env:
@@ -15,10 +15,7 @@ jobs:
       PACKAGE_NAME: pdgdeplopment.pcdaimaougroup.ghost.detection
       VERSION_CODE: 1
       VERSION_NAME: 1.0.0
-      AUTHOR: "pcdainaougroup"
-      KEYSTORE_PASSWORD: 031148mzk
-      KEY_ALIAS: pdgdeplopment
-      KEY_PASSWORD: 031148mzk
+      AUTHOR: "パソコン大魔王グループ"
 
     steps:
       - name: Checkout repository
@@ -83,38 +80,11 @@ jobs:
           cordova plugin add cordova-plugin-file
           cordova plugin add cordova-plugin-device-motion
 
-      - name: Build unsigned APK (release)
-        run: cordova build android --release -- --packageType=apk
+      - name: Build debug APK
+        run: cordova build android --debug
 
-      - name: Generate keystore (lowercase names)
-        run: |
-          keytool -genkeypair \
-            -alias $KEY_ALIAS \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -keystore my-release-key.keystore \
-            -storepass $KEYSTORE_PASSWORD \
-            -keypass $KEY_PASSWORD \
-            -dname "CN=pdgdeplopment, OU=development, O=パソコン大魔王グループ, L=tokyo, ST=tokyo, C=jp"
-
-      - name: Sign APK with apksigner
-        run: |
-          $HOME/android-sdk/build-tools/35.0.0/apksigner sign \
-            --ks my-release-key.keystore \
-            --ks-pass pass:$KEYSTORE_PASSWORD \
-            --key-pass pass:$KEY_PASSWORD \
-            --out platforms/android/app/build/outputs/apk/release/ghostdetection-release-signed.apk \
-            platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk
-
-      - name: Align signed APK
-        run: |
-          $HOME/android-sdk/build-tools/35.0.0/zipalign -v -p 4 \
-            platforms/android/app/build/outputs/apk/release/ghostdetection-release-signed.apk \
-            platforms/android/app/build/outputs/apk/release/ghostdetection-release.apk
-
-      - name: Upload Signed APK
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: ghostdetection-signed-apk
-          path: platforms/android/app/build/outputs/apk/release/ghostdetection-release.apk
+          name: ghostdetection-debug-apk
+          path: platforms/android/app/build/outputs/apk/debug/app-debug.apk
