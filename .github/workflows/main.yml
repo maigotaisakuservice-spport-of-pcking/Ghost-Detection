@@ -9,6 +9,11 @@ jobs:
   build-android:
     runs-on: ubuntu-latest
 
+    env:
+      JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.16-8/x64
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
@@ -29,36 +34,35 @@ jobs:
       with:
         api-level: 34
         build-tools: 34.0.0
-        cmake: false
-        ndk: false
 
     - name: Install Cordova
       run: npm install -g cordova@11.0.0
 
-    - name: Install Cordova Plugins
+    - name: Create Cordova Project
       run: |
+        cordova create ghostdetect PDGDeplopmet.pcdaimaougroup.Ghost.Detection "Ghost Detection"
+        cd ghostdetect
+        # 必要プラグインを追加
         cordova plugin add cordova-plugin-device-motion
         cordova plugin add cordova-plugin-device-orientation
         cordova plugin add cordova-plugin-media
         cordova plugin add cordova-plugin-camera
         cordova plugin add cordova-plugin-file
-
-    - name: Prepare Cordova Android Platform
-      run: |
-        cordova platform rm android || true
+        # Android プラットフォーム追加
         cordova platform add android@14.1.0
 
-    - name: Copy www files
+    - name: Copy www Files
       run: |
-        cp -R www/* platforms/android/app/src/main/assets/www/
+        cd ghostdetect
+        cp -R ../www/* www/
 
     - name: Build Debug APK
       run: |
-        cd platforms/android
-        ./gradlew assembleDebug
+        cd ghostdetect
+        cordova build android --debug
 
-    - name: Upload APK
+    - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ghost-detection-apk
-        path: platforms/android/app/build/outputs/apk/debug/app-debug.apk
+        path: ghostdetect/platforms/android/app/build/outputs/apk/debug/app-debug.apk
