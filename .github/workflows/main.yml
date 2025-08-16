@@ -51,10 +51,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y openjdk-11-jdk unzip wget
+          mkdir -p $HOME/android-sdk/cmdline-tools
           wget https://dl.google.com/android/repository/commandlinetools-linux-9123335_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip -d $HOME/android-sdk
+          unzip cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools
           mkdir -p $HOME/android-sdk/cmdline-tools/latest
-          mv $HOME/android-sdk/cmdline-tools/* $HOME/android-sdk/cmdline-tools/latest/
+          mv $HOME/android-sdk/cmdline-tools/cmdline-tools/* $HOME/android-sdk/cmdline-tools/latest/
           export ANDROID_HOME=$HOME/android-sdk
           export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
           yes | sdkmanager --licenses
@@ -64,6 +65,16 @@ jobs:
         run: |
           cordova platform remove android || true
           cordova platform add android
+
+      - name: Install Cordova plugins
+        run: |
+          cordova plugin add cordova-plugin-device
+          cordova plugin add cordova-plugin-dialogs
+          cordova plugin add cordova-plugin-geolocation
+          cordova plugin add cordova-plugin-media
+          cordova plugin add cordova-plugin-camera
+          cordova plugin add cordova-plugin-file
+          cordova plugin add cordova-plugin-motion
 
       - name: Build unsigned APK
         run: cordova build android --release -- --no-sign
