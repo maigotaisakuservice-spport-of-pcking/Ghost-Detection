@@ -108,7 +108,7 @@ jobs:
 
       - name: Align APK
         run: |
-          zipalign -v -p 4 \
+          $HOME/android-sdk/build-tools/35.0.0/zipalign -v -p 4 \
             platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk \
             platforms/android/app/build/outputs/apk/release/GhostDetection-release.apk
 
