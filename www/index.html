@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>幽霊検知システム</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src * 'self' data: gap: https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com;">
+  <style>
+    /* SF / ターミナル風デザイン */
+    html, body { margin:0; padding:0; width:100%; height:100%; background:black; color:#00ff66; font-family: 'Courier New', monospace; overflow:hidden; }
+    #videoElem { display:none; }
+    #videoCanvas, #overlayCanvas { position:absolute; top:0; left:0; width:100%; height:100%; z-index:1; }
+    #overlayCanvas { pointer-events:none; }
+    #alertOverlay { position:absolute; top:0; left:0; width:100%; height:100%; background:red; opacity:0.3; z-index:5; display:none; animation:blink 0.5s infinite; }
+    @keyframes blink { 0%, 50%, 100% { opacity:0.3; } 25%, 75% { opacity:0.7; } }
+
+    #controls { position:absolute; bottom:0; width:100%; background:black; padding:10px; z-index:10; display:flex; flex-wrap:wrap; align-items:center; gap:5px; }
+    button, select, input { background:black; color:#00ff66; border:1px solid #00ff66; padding:5px 10px; font-family: monospace; }
+    #statusText { flex:1; font-size:14px; }
+    #log { display:none; position:absolute; top:0; left:0; width:100%; max-height:50%; overflow:auto; background:rgba(0,0,0,0.7); color:#00ff66; z-index:20; font-size:12px; padding:5px; }
+  </style>
+
+  <!-- TensorFlow.js + coco-ssd -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+  <!-- p5.js -->
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
+
+  <!-- JSZip (ログダウンロード用) -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.11.0/dist/jszip.min.js"></script>
+</head>
+<body>
+
+  <!-- ビデオ & Canvas -->
+  <video id="videoElem" autoplay muted playsinline></video>
+  <canvas id="videoCanvas"></canvas>
+  <canvas id="overlayCanvas"></canvas>
+  <div id="alertOverlay"></div>
+
+  <!-- コントロールパネル -->
+  <div id="controls">
+    <button id="startBtn">START</button>
+    <button id="restartBtn">RESTART</button>
+    <button id="emergencyBtn">EMERGENCY RECORD</button>
+    <button id="downloadLogs">DOWNLOAD LOGS</button>
+    <label><input type="checkbox" id="audioToggle" checked> Audio</label>
+    <label><input type="checkbox" id="motionToggle" checked> Motion / Gyro</label>
+    <label><input type="checkbox" id="markerToggle" checked> Show Trajectories</label>
+    <label>Mode:
+      <select id="modeSelect">
+        <option value="normal">Normal</option>
+        <option value="infra">Infrared</option>
+        <option value="nv">NightVision</option>
+        <option value="ghost">Ghost Enhanced</option>
+      </select>
+    </label>
+    <label>Sensitivity: <input type="range" id="sensitivityRange" min="5" max="50" value="25"></label>
+    <label>Luminance: <input type="range" id="lumRange" min="1" max="50" value="15"></label>
+    <div id="statusText">SYSTEM INITIALIZING...</div>
+  </div>
+
+  <div id="log"></div>
+
+  <!-- app.js -->
+  <script src="app.js"></script>
+
+</body>
+</html>
